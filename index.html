@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>烂笔头 · 灵感笔记</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+    <link rel="stylesheet" href="src/css/style.css" />
+</head>
+<body>
+
+    <!-- ===== 加载指示器 ===== -->
+    <div id="loadingIndicator" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.3); z-index:999; display:flex; justify-content:center; align-items:center; backdrop-filter:blur(2px);">
+        <div style="background:#fff; padding:30px 40px; border-radius:16px; box-shadow:0 8px 30px rgba(0,0,0,0.2); text-align:center;">
+            <i class="fas fa-spinner fa-pulse" style="font-size:2.5rem; color:#d4a574;"></i>
+            <p style="margin-top:12px; color:#6b5f57;">加载中…</p>
+        </div>
+    </div>
+
+    <!-- ===== 顶部导航栏 (大字号) ===== -->
+    <header class="app-header" id="appHeader">
+        <div class="header-inner">
+            <div class="logo-area">
+                <i class="fas fa-pen-fancy logo-icon"></i>
+                <span class="logo-text">烂笔头</span>
+                <span class="version-tag">v5.4</span>
+            </div>
+            <div class="header-stats" id="headerStats">
+                <span class="stat-item" id="totalCount"><i class="fas fa-file-alt"></i> <span id="totalNum">0</span></span>
+                <span class="stat-item public-stat" id="publicCount"><i class="fas fa-globe"></i> <span id="publicNum">0</span></span>
+                <span class="stat-item private-stat" id="privateCount"><i class="fas fa-lock"></i> <span id="privateNum">0</span></span>
+            </div>
+            <div class="header-actions">
+                <button class="btn-icon user-btn" id="userToggle" title="用户"><i class="fas fa-user-circle"></i></button>
+                <button class="btn-icon" id="viewToggle" title="切换视图"><i class="fas fa-th-list"></i></button>
+                <button class="btn-icon" id="multiSelectToggle" title="多选模式"><i class="fas fa-check-square"></i></button>
+                <button class="btn-icon" id="settingsToggle" title="设置"><i class="fas fa-cog"></i></button>
+                <button class="btn-icon theme-toggle" id="themeToggle" title="切换主题"><i class="fas fa-moon"></i></button>
+            </div>
+        </div>
+    </header>
+
+    <!-- ===== 主内容区 ===== -->
+    <main class="app-main">
+        <section class="filter-section">
+            <div class="filter-row">
+                <div class="filter-tabs">
+                    <button class="filter-tab active" data-filter="all">全部</button>
+                    <button class="filter-tab" data-filter="public">公开</button>
+                    <button class="filter-tab" data-filter="private">私密</button>
+                </div>
+                <div class="filter-tags" id="filterTags"></div>
+            </div>
+            <div class="search-box">
+                <i class="fas fa-search search-icon"></i>
+                <input type="text" id="searchInput" placeholder="搜索灵感…" />
+                <button class="btn-clear" id="clearSearch" style="display:none;"><i class="fas fa-times-circle"></i></button>
+            </div>
+        </section>
+
+        <section class="content-area" id="contentArea">
+            <div id="listView">
+                <div class="ideas-container" id="ideasContainer">
+                    <div class="empty-state" id="emptyState">
+                        <i class="fas fa-pen-fancy empty-icon"></i>
+                        <h3>还没有灵感</h3>
+                        <p>点击右下角的 <i class="fas fa-plus-circle"></i> 按钮开始记录</p>
+                    </div>
+                </div>
+                <div class="multi-select-bar" id="multiSelectBar" style="display:none;">
+                    <span id="selectedCount">已选 0 项</span>
+                    <button class="btn btn-danger" id="batchDeleteBtn"><i class="fas fa-trash"></i> 删除选中</button>
+                    <button class="btn btn-secondary" id="cancelMultiSelect">取消</button>
+                </div>
+            </div>
+
+            <div id="editorView" class="editor-view" style="display:none;">
+                <div class="editor-header">
+                    <h2 id="editorTitle"><i class="fas fa-feather-alt"></i> 新灵感</h2>
+                    <button class="btn btn-secondary" id="editorCancel">取消</button>
+                </div>
+                <div class="editor-body">
+                    <form id="ideaForm">
+                        <input type="hidden" id="editId" value="" />
+                        <div class="editor-top-row">
+                            <div class="form-group title-group">
+                                <input type="text" id="ideaTitle" placeholder="标题…" required />
+                            </div>
+                            <div class="form-group visibility-group">
+                                <div class="toggle-group" id="toggleGroup">
+                                    <button type="button" class="toggle-btn" data-value="public">公开</button>
+                                    <button type="button" class="toggle-btn active" data-value="private">私密</button>
+                                </div>
+                                <input type="hidden" id="ideaVisibility" value="private" />
+                            </div>
+                            <div class="form-group tags-group">
+                                <div class="tag-selector" id="tagSelector"></div>
+                                <div class="tag-add-area">
+                                    <input type="text" id="newTagInput" placeholder="新标签" />
+                                    <button type="button" class="btn-sm" id="addTagBtn"><i class="fas fa-plus"></i></button>
+                                </div>
+                                <input type="hidden" id="ideaTags" value="" />
+                            </div>
+                        </div>
+                        <div class="form-group content-group">
+                            <div class="editor-toolbar">
+                                <button type="button" class="btn-sm" id="insertImageBtn"><i class="fas fa-image"></i> 插入图片</button>
+                                <button type="button" class="btn-sm" id="clearFormatBtn"><i class="fas fa-eraser"></i> 清除格式</button>
+                            </div>
+                            <div id="ideaContent" class="editor-content" contenteditable="true" placeholder="写下你的灵感…（图文混排）"></div>
+                        </div>
+                        <div class="form-actions">
+                            <button type="submit" class="btn btn-primary" id="modalSubmit"><i class="fas fa-save"></i> 保存</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <button class="fab" id="fabAdd" title="添加灵感"><i class="fas fa-plus"></i></button>
+
+    <!-- ===== 用户管理模态框 (独立) ===== -->
+    <div class="user-overlay" id="userOverlay" style="display:none;">
+        <div class="user-panel glass">
+            <div class="user-header">
+                <h3><i class="fas fa-user-circle"></i> 用户管理</h3>
+                <button class="btn-icon" id="userClose"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="user-body">
+                <div class="user-status" id="userStatusDisplay">未登录</div>
+                <div class="user-form">
+                    <input type="text" id="userUsername" placeholder="用户名" />
+                    <input type="password" id="userPassword" placeholder="密码" />
+                    <div class="user-actions">
+                        <button class="btn btn-primary" id="userLoginBtn"><i class="fas fa-sign-in-alt"></i> 登录</button>
+                        <button class="btn btn-secondary" id="userRegisterBtn"><i class="fas fa-user-plus"></i> 注册</button>
+                        <button class="btn btn-danger" id="userLogoutBtn" style="display:none;"><i class="fas fa-sign-out-alt"></i> 登出</button>
+                    </div>
+                    <div class="user-hint" id="userHint"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== 设置面板 (高级玻璃效果) ===== -->
+    <div class="settings-overlay" id="settingsOverlay" style="display:none;">
+        <div class="settings-panel glass">
+            <div class="settings-header">
+                <h3><i class="fas fa-cog"></i> 设置</h3>
+                <button class="btn-icon" id="settingsClose"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="settings-body">
+                <div class="setting-group">
+                    <label><i class="fas fa-folder-open"></i> 存储目录</label>
+                    <div class="setting-row">
+                        <button class="btn btn-secondary" id="settingFolderBtn"><i class="fas fa-folder"></i> 选择目录</button>
+                        <span id="folderStatus" class="hint-text">未设置</span>
+                    </div>
+                    <div class="setting-hint">建议选择 <strong>D:\lanbitou</strong> (自动创建子目录)</div>
+                </div>
+                <div class="setting-group">
+                    <label><i class="fas fa-palette"></i> 主题</label>
+                    <div class="setting-row">
+                        <button class="btn btn-secondary" id="settingThemeLight">☀️ 浅色</button>
+                        <button class="btn btn-secondary" id="settingThemeDark">🌙 深色</button>
+                    </div>
+                </div>
+                <div class="setting-group">
+                    <label><i class="fas fa-info-circle"></i> 版本</label>
+                    <div class="setting-row">
+                        <span class="hint-text">烂笔头 v5.4 · AES-GCM 加密</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== 预览模态框 ===== -->
+    <div class="preview-overlay" id="previewOverlay" style="display:none;">
+        <div class="preview-panel glass">
+            <div class="preview-header">
+                <h2 id="previewTitle"><i class="fas fa-eye"></i> 预览</h2>
+                <div class="preview-actions">
+                    <button class="btn btn-secondary" id="previewEditBtn"><i class="fas fa-edit"></i> 编辑</button>
+                    <button class="btn btn-icon" id="previewClose"><i class="fas fa-times"></i></button>
+                </div>
+            </div>
+            <div class="preview-body">
+                <div class="preview-meta">
+                    <span id="previewVisibility" class="card-visibility"></span>
+                    <span id="previewTags" class="preview-tags"></span>
+                    <span id="previewDate" class="preview-date"></span>
+                </div>
+                <div id="previewContent" class="preview-content"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== 隐藏文件选择器 ===== -->
+    <input type="file" id="imageFileInput" accept="image/*" style="display:none;" />
+    <input type="file" id="fileInput" accept=".zip" style="display:none;" />
+
+    <!-- ===== 自定义确认弹窗 (美化) ===== -->
+    <div class="custom-confirm glass" id="customConfirm" style="display:none;">
+        <div class="confirm-content">
+            <div class="confirm-icon"><i class="fas fa-question-circle"></i></div>
+            <p id="confirmMessage">确定？</p>
+            <div class="confirm-actions">
+                <button class="btn btn-secondary" id="confirmCancel">取消</button>
+                <button class="btn btn-danger" id="confirmOk">确定</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== 灯箱 ===== -->
+    <div class="lightbox" id="lightbox" onclick="this.classList.remove('active')">
+        <span class="close-lightbox" onclick="this.parentElement.classList.remove('active')">&times;</span>
+        <img src="" alt="大图" />
+    </div>
+
+    <script src="src/js/storage.js"></script>
+    <script src="src/js/ui.js"></script>
+    <script src="src/js/app.js"></script>
+</body>
+</html>
