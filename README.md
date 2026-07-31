@@ -1,0 +1,2 @@
+# lanbitou
+Daily Notes
