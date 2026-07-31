@@ -1,4 +1,4 @@
-// ui.js – 界面渲染与交互 (v5.4)
+// ui.js – 界面渲染与交互 (v5.4-colors)
 const UI = {
     els: {},
     currentFilter: 'all',
@@ -10,9 +10,11 @@ const UI = {
     confirmCallback: null,
     isEditing: false,
     previewNoteId: null,
-    tagColors: [
-        '#e67e22', '#3498db', '#2ecc71', '#e74c3c', '#9b59b6', '#1abc9c',
-        '#f39c12', '#2980b9', '#27ae60', '#c0392b', '#8e44ad', '#16a085'
+
+    // 饱和色板（用于生成浅色背景）
+    tagHues: [
+        30, 210, 150, 0, 280, 180,
+        40, 200, 140, 350, 260, 160
     ],
 
     init() {
@@ -73,7 +75,6 @@ const UI = {
             previewEditBtn: document.getElementById('previewEditBtn'),
             previewClose: document.getElementById('previewClose'),
             loadingIndicator: document.getElementById('loadingIndicator'),
-            // 用户管理
             userToggle: document.getElementById('userToggle'),
             userOverlay: document.getElementById('userOverlay'),
             userClose: document.getElementById('userClose'),
@@ -84,7 +85,6 @@ const UI = {
             userLogoutBtn: document.getElementById('userLogoutBtn'),
             userStatusDisplay: document.getElementById('userStatusDisplay'),
             userHint: document.getElementById('userHint'),
-            // 添加标签
             newTagInput: document.getElementById('newTagInput'),
             addTagBtn: document.getElementById('addTagBtn'),
         };
@@ -111,6 +111,7 @@ const UI = {
         this.loadData();
     },
 
+    // ---------- 数据加载与解密 ----------
     async loadData() {
         this.showLoading(true);
         const raw = Storage.getAllSync();
@@ -127,6 +128,23 @@ const UI = {
         this.render(notes);
         this.updateStats(notes);
         this.showLoading(false);
+    },
+
+    // ---------- 确保数据解密（供渲染调用） ----------
+    async ensureDecrypted(notes) {
+        const user = Storage.getCurrentUser();
+        const password = Storage.getUserPassword();
+        if (!user || !password) return notes;
+        const decrypted = [];
+        for (let note of notes) {
+            if (note._encrypted && note.content) {
+                const dec = await Storage.decryptContent(note.content, password);
+                decrypted.push({ ...note, content: dec });
+            } else {
+                decrypted.push(note);
+            }
+        }
+        return decrypted;
     },
 
     showLoading(show) {
@@ -223,6 +241,18 @@ const UI = {
         editor.focus();
     },
 
+    // ---------- 标签颜色工具 ----------
+    getLightTagColor(tag) {
+        let hash = 0;
+        for (let i = 0; i < tag.length; i++) {
+            hash = tag.charCodeAt(i) + ((hash << 5) - hash);
+        }
+        const idx = Math.abs(hash) % this.tagHues.length;
+        const hue = this.tagHues[idx];
+        // 浅色背景：饱和度 30%，亮度 85%
+        return `hsl(${hue}, 30%, 85%)`;
+    },
+
     // ---------- 标签 UI ----------
     refreshTagsUI() {
         const tags = Storage.getTags();
@@ -234,16 +264,13 @@ const UI = {
                 span.className = 'tag-filter' + (this.selectedTags.includes(tag) ? ' active' : '');
                 span.dataset.tag = tag;
                 span.textContent = tag;
-                span.style.background = this.getTagColor(tag);
-                span.style.color = '#fff';
+                span.style.backgroundColor = this.getLightTagColor(tag);
                 span.addEventListener('click', (e) => {
                     e.stopPropagation();
                     const idx = this.selectedTags.indexOf(tag);
                     if (idx > -1) this.selectedTags.splice(idx, 1);
                     else this.selectedTags.push(tag);
-                    const notes = Storage.getAllSync();
-                    this.render(notes);
-                    this.refreshTagsUI();
+                    this.renderWithDecryption();
                 });
                 filterContainer.appendChild(span);
             });
@@ -257,8 +284,7 @@ const UI = {
                 const btn = document.createElement('span');
                 btn.className = 'tag-option' + (currentNoteTags.includes(tag) ? ' active' : '');
                 btn.textContent = tag;
-                btn.style.background = this.getTagColor(tag);
-                btn.style.color = '#fff';
+                btn.style.backgroundColor = this.getLightTagColor(tag);
                 btn.addEventListener('click', () => {
                     const input = this.els.ideaTags;
                     let current = input.value.split(',').map(s => s.trim()).filter(Boolean);
@@ -273,40 +299,13 @@ const UI = {
         }
     },
 
-    // ---------- 修复添加标签 ----------
-    setupAddTag() {
-        const btn = this.els.addTagBtn;
-        const input = this.els.newTagInput;
-        if (!btn || !input) return;
-
-        const addTag = () => {
-            const val = input.value.trim();
-            if (!val) return;
-            if (val.includes(',')) {
-                alert('标签名不能包含逗号');
-                return;
-            }
-            Storage.addTag(val);
-            input.value = '';
-            this.refreshTagsUI();
-            // 自动添加到当前笔记的标签列表
-            const tagInput = this.els.ideaTags;
-            let current = tagInput.value.split(',').map(s => s.trim()).filter(Boolean);
-            if (!current.includes(val)) {
-                current.push(val);
-                tagInput.value = current.join(', ');
-            }
-            // 重新渲染标签选择器
-            this.refreshTagsUI();
-        };
-
-        btn.addEventListener('click', addTag);
-        input.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                addTag();
-            }
-        });
+    // ---------- 封装渲染（带解密） ----------
+    async renderWithDecryption() {
+        const raw = Storage.getAllSync();
+        const decrypted = await this.ensureDecrypted(raw);
+        this.render(decrypted);
+        this.updateStats(decrypted);
+        this.refreshTagsUI();
     },
 
     // ---------- 编辑器 ----------
@@ -352,8 +351,7 @@ const UI = {
         this.els.listView.style.display = 'block';
         this.els.editorView.style.display = 'none';
         this.els.fabAdd.style.display = 'block';
-        const notes = Storage.getAllSync();
-        this.render(notes);
+        this.renderWithDecryption();
     },
 
     setToggleActive(value) {
@@ -406,7 +404,7 @@ const UI = {
         this.els.previewVisibility.innerHTML = `<i class="fas ${vis === 'public' ? 'fa-globe' : 'fa-lock'}"></i> ${vis}`;
         const tags = Array.isArray(note.tags) ? note.tags : [];
         this.els.previewTags.innerHTML = tags.map(t =>
-            `<span class="tag" style="background:${this.getTagColor(t)}; color:#fff;">${t}</span>`
+            `<span class="tag" style="background:${this.getLightTagColor(t)}">${t}</span>`
         ).join('');
         this.els.previewDate.textContent = new Date(note.createdAt).toLocaleString();
         this.els.previewOverlay.style.display = 'flex';
@@ -476,7 +474,7 @@ const UI = {
             let tagsHtml = '';
             if (tags.length) {
                 tagsHtml = `<div class="card-tags">${tags.map(t =>
-                    `<span class="tag" style="background:${this.getTagColor(t)}; color:#fff;">${t}</span>`
+                    `<span class="tag" style="background:${this.getLightTagColor(t)}">${t}</span>`
                 ).join('')}</div>`;
             }
             const contentHtml = note.content || '';
@@ -527,8 +525,7 @@ const UI = {
                 const rect = btn.getBoundingClientRect();
                 this.showConfirm('确定删除此灵感？', () => {
                     Storage.delete(id);
-                    const notes = Storage.getAllSync();
-                    this.render(notes);
+                    this.renderWithDecryption();
                 }, rect);
             });
         });
@@ -560,16 +557,14 @@ const UI = {
             } else {
                 this.els.multiSelectBar.style.display = 'flex';
             }
-            const notes = Storage.getAllSync();
-            this.render(notes);
+            this.renderWithDecryption();
         });
 
         this.els.cancelMultiSelect.addEventListener('click', () => {
             this.multiSelectMode = false;
             this.selectedIds.clear();
             this.els.multiSelectBar.style.display = 'none';
-            const notes = Storage.getAllSync();
-            this.render(notes);
+            this.renderWithDecryption();
         });
 
         this.els.batchDeleteBtn.addEventListener('click', () => {
@@ -584,8 +579,7 @@ const UI = {
                 this.selectedIds.clear();
                 this.multiSelectMode = false;
                 this.els.multiSelectBar.style.display = 'none';
-                const notes = Storage.getAllSync();
-                this.render(notes);
+                this.renderWithDecryption();
             }, rect);
         });
     },
@@ -607,8 +601,7 @@ const UI = {
         btn.addEventListener('click', () => {
             this.viewMode = this.viewMode === 'card' ? 'list' : 'card';
             btn.innerHTML = this.viewMode === 'card' ? '<i class="fas fa-th-list"></i>' : '<i class="fas fa-th"></i>';
-            const notes = Storage.getAllSync();
-            this.render(notes);
+            this.renderWithDecryption();
         });
     },
 
@@ -648,7 +641,7 @@ const UI = {
         }
     },
 
-    // ---------- 用户管理 (独立) ----------
+    // ---------- 用户管理 ----------
     setupUserManagement() {
         const toggle = this.els.userToggle;
         const overlay = this.els.userOverlay;
@@ -666,7 +659,6 @@ const UI = {
             if (e.target === overlay) overlay.style.display = 'none';
         });
 
-        // 登录
         this.els.userLoginBtn.addEventListener('click', async () => {
             const username = this.els.userUsername.value.trim();
             const password = this.els.userPassword.value;
@@ -687,7 +679,6 @@ const UI = {
             }
         });
 
-        // 注册
         this.els.userRegisterBtn.addEventListener('click', async () => {
             const username = this.els.userUsername.value.trim();
             const password = this.els.userPassword.value;
@@ -705,7 +696,6 @@ const UI = {
             setTimeout(() => overlay.style.display = 'none', 800);
         });
 
-        // 登出
         this.els.userLogoutBtn.addEventListener('click', () => {
             Storage.setCurrentUser(null);
             Storage.clearUserPassword();
@@ -794,7 +784,7 @@ const UI = {
                 if (data && Array.isArray(data)) {
                     if (confirm('从目录加载数据，覆盖当前？')) {
                         Storage.saveAll(data);
-                        this.render(Storage.getAllSync());
+                        this.renderWithDecryption();
                     }
                 }
                 this.updateFolderStatus();
@@ -811,7 +801,7 @@ const UI = {
             const data = await Storage.loadFromFolder();
             if (data && Array.isArray(data)) {
                 Storage.saveAll(data);
-                this.render(Storage.getAllSync());
+                this.renderWithDecryption();
             }
         }
     },
@@ -855,19 +845,47 @@ const UI = {
         return div.innerHTML;
     },
 
-    getTagColor(tag) {
-        let hash = 0;
-        for (let i = 0; i < tag.length; i++) {
-            hash = tag.charCodeAt(i) + ((hash << 5) - hash);
-        }
-        const idx = Math.abs(hash) % this.tagColors.length;
-        return this.tagColors[idx];
-    },
-
+    // ---------- 灯箱 ----------
     openLightbox(src) {
         const lb = document.getElementById('lightbox');
         const img = lb.querySelector('img');
         img.src = src;
         lb.classList.add('active');
+    },
+
+    // ---------- 添加标签 ----------
+    setupAddTag() {
+        const btn = this.els.addTagBtn;
+        const input = this.els.newTagInput;
+        if (!btn || !input) return;
+
+        const addTag = () => {
+            const val = input.value.trim();
+            if (!val) return;
+            if (val.includes(',')) {
+                alert('标签名不能包含逗号');
+                return;
+            }
+            Storage.addTag(val);
+            input.value = '';
+            this.refreshTagsUI();
+            // 自动添加到当前笔记的标签列表
+            const tagInput = this.els.ideaTags;
+            let current = tagInput.value.split(',').map(s => s.trim()).filter(Boolean);
+            if (!current.includes(val)) {
+                current.push(val);
+                tagInput.value = current.join(', ');
+            }
+            // 重新渲染标签选择器
+            this.refreshTagsUI();
+        };
+
+        btn.addEventListener('click', addTag);
+        input.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                addTag();
+            }
+        });
     }
 };
