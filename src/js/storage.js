@@ -89,7 +89,7 @@ class Storage {
         }
     }
 
-    // ---------- 数据操作 (同步读取，异步加密存储) ----------
+    // ---------- 数据操作 ----------
     static getAllSync() {
         const raw = localStorage.getItem(this.getUserKey());
         if (!raw) return [];
