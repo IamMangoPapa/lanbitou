@@ -3,7 +3,7 @@ document.addEventListener('DOMContentLoaded', () => {
     UI.init();
 
     function refresh() {
-        UI.render(Storage.getAllSync());
+        UI.renderWithDecryption();
     }
 
     // ---------- 筛选 ----------
@@ -106,7 +106,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         const merged = [...current, ...imported.filter(n => !ids.has(n.id))];
                         Storage.saveAll(merged);
                     }
-                    UI.render(Storage.getAllSync());
+                    UI.renderWithDecryption();
                 }
             } catch (err) {
                 alert('导入失败：' + err.message);
@@ -119,7 +119,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.addEventListener('delete', (e) => {
         const [id] = e.detail;
         Storage.delete(id);
-        UI.render(Storage.getAllSync());
+        UI.renderWithDecryption();
     });
 
     // ---------- ESC ----------
